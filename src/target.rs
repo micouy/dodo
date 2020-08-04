@@ -11,7 +11,8 @@ pub struct TargetOpts {
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum Task {
-    command: String,
+    command,
+}: String,
     working_dir: Option<PathBuf>,
 }
 
