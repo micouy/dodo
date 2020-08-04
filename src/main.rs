@@ -13,27 +13,12 @@ use serde::*;
 use toml;
 
 mod error;
+mod target;
 mod util;
 
 use error::{Error, Result};
+use target::{Command, TargetOpts};
 use util::{cwd, get_file_hash, parse_command, read_config};
-
-#[derive(Deserialize, Debug)]
-struct TargetOpts {
-    working_dir: Option<PathBuf>,
-    deps: Option<Vec<String>>,
-    commands: Vec<Command>,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-enum Command {
-    Struct {
-        command: String,
-        working_dir: Option<PathBuf>,
-    },
-    Plain(String),
-}
 
 fn main() -> Result<()> {
     let dodo = read_config()?;
