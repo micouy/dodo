@@ -41,8 +41,15 @@ pub fn cwd() -> Result<PathBuf> {
     env::current_dir().map_err(Error::IO)
 }
 
-pub fn read_config() -> Result<String> {
-    fs::read_to_string("dodo.toml").map_err(|e| {
+pub fn read_config<P>(file: Option<P>) -> Result<String>
+where
+    P: AsRef<Path>,
+{
+    let file = file
+        .as_ref()
+        .map(|f| f.as_ref())
+        .unwrap_or("dodo.toml".as_ref());
+    fs::read_to_string(file).map_err(|e| {
         use std::io::ErrorKind::*;
 
         match e.kind() {

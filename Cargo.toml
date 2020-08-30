@@ -12,3 +12,4 @@ serde = { version = "*", features = [ "derive" ] }
 dynfmt = { version = "*", features = ["curly"] }
 rustc-hash = "*"
 ansi_term = "*"
+void = "*"

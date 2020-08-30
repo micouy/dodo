@@ -16,6 +16,10 @@ pub enum Error {
     InvalidFilePath,
 }
 
+// --- UNREACHABLE ERROR ---
+
+#[derive(Debug)]
+pub enum Unreachable {}
 
 // --- FORMATTING ERROR ---
 
