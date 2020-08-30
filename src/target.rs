@@ -1,14 +1,6 @@
-use serde::{
-    de::{SeqAccess, Visitor},
-    *,
-};
-use std::{
-    collections::HashMap as Map,
-    error::Error,
-    fmt,
-    path::{Path, PathBuf},
-    str::FromStr,
-};
+use std::path::{Path, PathBuf};
+
+use serde::*;
 
 #[derive(Deserialize, Serialize, Debug)]
 pub struct Config {
