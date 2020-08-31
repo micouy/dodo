@@ -4,38 +4,32 @@ use std::{
     env,
     fs,
     hash::{Hash, Hasher},
+    iter,
     path::{Path, PathBuf},
     string::ToString,
 };
 
 use crate::{
     error::{Error, Result},
-    target::Target,
+    target::{Target, TaskContext},
 };
 
 use ansi_term::Colour::*;
-use dynfmt::{Format, SimpleCurlyFormat as Formatter};
+use dynfmt::{Format, FormatArgs, SimpleCurlyFormat as Formatter};
 use rustc_hash::FxHasher;
 use serde::*;
 
-pub fn parse_command<K, V>(
-    command: &str,
-    vars: &HashMap<K, V>,
-) -> Result<String>
-where
-    K: std::borrow::Borrow<str> + Hash + Eq,
-    V: Serialize,
-{
+pub fn format_arg(arg: &str, context: impl FormatArgs) -> Result<String> {
     Formatter
-        .format(command, vars)
+        .format(arg, context)
         .map_err(Into::into)
         .map(|cow| cow.to_string())
 }
 
-pub fn get_file_hash(path: impl AsRef<Path>) -> Option<u64> {
+pub fn get_file_hash(path: impl AsRef<Path>) -> Result<u64> {
     let mut hasher: FxHasher = FxHasher::default();
 
-    fs::read(path.as_ref()).ok().map(|content| {
+    fs::read(path.as_ref()).map_err(Error::IO).map(|content| {
         content.hash(&mut hasher);
 
         hasher.finish()
@@ -66,7 +60,11 @@ where
 
 pub fn print_targets(targets: &[Target]) -> Result<()> {
     for target in targets {
-        println!("{}: {:?}", Green.paint("OUTPUT"), target.output);
+        println!(
+            "{}: {}",
+            Green.paint("OUTPUT"),
+            target.output.to_string_lossy()
+        );
 
         println!(
             "{}: {}",
@@ -82,8 +80,6 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
             .unwrap_or("file not present".into());
         println!("{}: {}", Green.paint("HASH"), hash);
 
-        let mut vars = HashMap::new();
-
         let target_filename = target
             .output
             .file_name()
@@ -92,31 +88,57 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
             .ok_or(Error::Unreachable(
                 "Conversion of OsStr to &str failed".to_string(),
             ))?; // TOML uses UTF-8 so the conversion won't fail
-        let target_filename: ansi_term::ANSIGenericString<str> =
-            Fixed(14).paint(target_filename);
-        let target_filename = target_filename.to_string();
-        vars.insert("target_filename", target_filename);
-        let vars = vars; // demut
+        let target_filename = Fixed(14).paint(target_filename).to_string();
+        let context = TaskContext { target_filename };
 
         println!("{}:", Green.paint("COMMANDS"));
         target
             .tasks
             .iter()
             .map(|task| {
-                let cmd = parse_command(task.command(), &vars).unwrap();
-                let dir = task
+                let command = Fixed(3).paint(&task.command).to_string();
+                let mut args = task.format_args(&context).unwrap();
+                args.insert(0, command);
+                let line = args.join(" ");
+                let mb_dir = task
                     .working_dir()
                     .map(|dir| dir.to_string_lossy())
                     .map(|dir| Fixed(242).paint(format!("# in {}", dir)));
 
-                (cmd, dir)
+                (line, mb_dir)
             })
-            .for_each(|(cmd, dir)| match dir {
-                Some(dir) => println!("$ {} {}", cmd, dir),
-                None => println!("$ {}", cmd),
+            .for_each(|(line, mb_dir)| match mb_dir {
+                Some(dir) => println!("$ {} {}", line, dir),
+                None => println!("$ {}", line),
             });
 
         println!("");
+    }
+
+    Ok(())
+}
+
+pub fn run_targets(targets: &[Target]) -> Result<()> {
+    for target in targets {
+        let current_dir = env::current_dir().map_err(Error::IO)?;
+        let working_dir = target.working_dir.clone().unwrap_or(current_dir);
+
+        let target_filename = target
+            .output
+            .file_name()
+            .ok_or_else(|| Error::InvalidFilePath)?
+            .to_str()
+            .ok_or(Error::Unreachable(
+                "Conversion of OsStr to &str failed".to_string(), // TOML uses UTF-8 so the conversion won't fail
+            ))?
+            .to_string();
+        let context = TaskContext { target_filename };
+
+        target
+            .tasks
+            .iter()
+            .map(|task| task.run(working_dir.clone(), &context).map(|_| ()))
+            .collect::<Result<()>>()?;
     }
 
     Ok(())
