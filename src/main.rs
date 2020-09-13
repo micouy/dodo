@@ -1,5 +1,4 @@
-use toml;
-
+mod deps;
 mod error;
 mod target;
 mod util;
@@ -9,7 +8,7 @@ use target::Config;
 use util::{print_targets, read_config, run_targets};
 
 fn main() -> Result<()> {
-    let args = std::env::args().skip(1).next();
+    let args = std::env::args().nth(1);
     let dodo = read_config(args)?;
     let dodo = toml::from_str::<Config>(&dodo).map_err(Error::TOML)?;
 

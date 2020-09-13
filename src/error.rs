@@ -1,5 +1,4 @@
 use std::io;
-use toml;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -13,6 +12,9 @@ pub enum Error {
     Unreachable(String),
     ConfigNotFound,
     InvalidFilePath,
+    EmptyCommand,
+    DependencyCycle,
+    DuplicateOutput,
 }
 
 // --- UNREACHABLE ERROR ---

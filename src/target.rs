@@ -1,8 +1,5 @@
 use std::{
-    collections::HashMap,
     convert::{identity, AsRef},
-    env,
-    hash::Hash,
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
 };
@@ -23,7 +20,7 @@ pub struct Config {
 
 // waiting for https://github.com/serde-rs/serde/issues/939
 // to add validation
-#[derive(Deserialize, Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Target {
     pub output: PathBuf, // handle multiple outputs?
     pub tasks: Vec<Task>,
@@ -39,13 +36,9 @@ impl Target {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Task {
-    // reject commands containing spaces with `and_then` when the new serde is
-    // out?
     pub command: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub args: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     working_dir: Option<PathBuf>,
 }
@@ -72,15 +65,17 @@ impl Task {
         self.working_dir.as_ref().map(|d| d.as_ref())
     }
 
-    pub fn command(&self) -> &str {
-        &self.command
-    }
-
-    pub fn format_args(&self, context: impl FormatArgs) -> Result<Vec<String>> {
-        self.args
-            .iter()
+    pub fn format_command(
+        &self,
+        context: impl FormatArgs,
+    ) -> Result<(String, Vec<String>)> {
+        let mut parts = self.command.split(' ').filter(|s| !s.is_empty());
+        let command = parts.next().ok_or(Error::EmptyCommand)?.to_string();
+        let args = parts
             .map(|arg| format_arg(arg, &context).map_err(Error::from))
-            .collect()
+            .collect::<Result<_>>()?;
+
+        Ok((command, args))
     }
 
     pub fn run(
@@ -93,11 +88,11 @@ impl Task {
             .map(|subdir| target_working_dir.join(subdir))
             .unwrap_or(target_working_dir);
 
-        let args = self.format_args(context)?;
+        let (command, args) = self.format_command(context)?;
 
-        println!("executing: {} {}", self.command, args.clone().join(" "));
+        println!("executing: {} {}", command, args.join(" "));
 
-        Command::new(self.command.clone())
+        Command::new(command)
             .current_dir(working_dir)
             .args(&args)
             .spawn()

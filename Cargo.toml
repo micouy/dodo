@@ -7,9 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-toml = "*"
-serde = { version = "*", features = [ "derive" ] }
-dynfmt = { version = "*", features = ["curly"] }
-rustc-hash = "*"
-ansi_term = "*"
-void = "*"
+toml = "0.5"
+serde = { version = "1", features = [ "derive" ] }
+dynfmt = { version = "0.1", features = ["curly"] }
+rustc-hash = "*" # replace with fasthash::xx
+ansi_term = "0.12"
+daggy = "0.7"

@@ -1,11 +1,9 @@
 use std::{
-    collections::HashMap,
     convert::AsRef,
     env,
     fs,
     hash::{Hash, Hasher},
-    iter,
-    path::{Path, PathBuf},
+    path::Path,
     string::ToString,
 };
 
@@ -17,7 +15,6 @@ use crate::{
 use ansi_term::Colour::*;
 use dynfmt::{Format, FormatArgs, SimpleCurlyFormat as Formatter};
 use rustc_hash::FxHasher;
-use serde::*;
 
 pub fn format_arg(arg: &str, context: impl FormatArgs) -> Result<String> {
     Formatter
@@ -36,10 +33,6 @@ pub fn get_file_hash(path: impl AsRef<Path>) -> Result<u64> {
     })
 }
 
-pub fn cwd() -> Result<PathBuf> {
-    env::current_dir().map_err(Error::IO)
-}
-
 pub fn read_config<P>(file: Option<P>) -> Result<String>
 where
     P: AsRef<Path>,
@@ -47,7 +40,7 @@ where
     let file = file
         .as_ref()
         .map(|f| f.as_ref())
-        .unwrap_or("dodo.toml".as_ref());
+        .unwrap_or_else(|| "dodo.toml".as_ref());
     fs::read_to_string(file).map_err(|e| {
         use std::io::ErrorKind::*;
 
@@ -71,23 +64,25 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
             Green.paint("WORKING DIR"),
             target
                 .working_dir()
-                .unwrap_or(".".as_ref())
+                .unwrap_or_else(|| ".".as_ref())
                 .to_string_lossy()
         );
 
         let hash = get_file_hash(&target.output)
             .map(|h| format!("{:x}", h))
-            .unwrap_or("file not present".into());
+            .unwrap_or_else(|_| "file not present".into());
         println!("{}: {}", Green.paint("HASH"), hash);
 
         let target_filename = target
             .output
             .file_name()
-            .ok_or_else(|| Error::InvalidFilePath)?
+            .ok_or(Error::InvalidFilePath)?
             .to_str()
-            .ok_or(Error::Unreachable(
-                "Conversion of OsStr to &str failed".to_string(),
-            ))?; // TOML uses UTF-8 so the conversion won't fail
+            .ok_or_else(|| {
+                Error::Unreachable(
+                    "Conversion of OsStr to &str failed".to_string(),
+                )
+            })?; // TOML uses UTF-8 so the conversion won't fail
         let target_filename = Fixed(14).paint(target_filename).to_string();
         let context = TaskContext { target_filename };
 
@@ -96,8 +91,9 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
             .tasks
             .iter()
             .map(|task| {
-                let command = Fixed(3).paint(&task.command).to_string();
-                let mut args = task.format_args(&context).unwrap();
+                let (command, mut args) =
+                    task.format_command(&context).unwrap();
+                let command = Fixed(3).paint(&command).to_string();
                 args.insert(0, command);
                 let line = args.join(" ");
                 let mb_dir = task
@@ -112,7 +108,7 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
                 None => println!("$ {}", line),
             });
 
-        println!("");
+        println!();
     }
 
     Ok(())
@@ -126,9 +122,9 @@ pub fn run_targets(targets: &[Target]) -> Result<()> {
         let target_filename = target
             .output
             .file_name()
-            .ok_or_else(|| Error::InvalidFilePath)?
+            .ok_or(Error::InvalidFilePath)?
             .to_str()
-            .ok_or(Error::Unreachable(
+            .ok_or_else(|| Error::Unreachable(
                 "Conversion of OsStr to &str failed".to_string(), // TOML uses UTF-8 so the conversion won't fail
             ))?
             .to_string();
