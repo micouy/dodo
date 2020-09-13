@@ -2,7 +2,7 @@ use std::{
     convert::AsRef,
     env,
     fs,
-    hash::{Hash, Hasher},
+    hash::{Hash, Hasher as _},
     path::Path,
     string::ToString,
 };
@@ -14,7 +14,7 @@ use crate::{
 
 use ansi_term::Colour::*;
 use dynfmt::{Format, FormatArgs, SimpleCurlyFormat as Formatter};
-use rustc_hash::FxHasher;
+use twox_hash::XxHash64 as Hasher;
 
 pub fn format_arg(arg: &str, context: impl FormatArgs) -> Result<String> {
     Formatter
@@ -24,7 +24,7 @@ pub fn format_arg(arg: &str, context: impl FormatArgs) -> Result<String> {
 }
 
 pub fn get_file_hash(path: impl AsRef<Path>) -> Result<u64> {
-    let mut hasher: FxHasher = FxHasher::default();
+    let mut hasher = Hasher::default();
 
     fs::read(path.as_ref()).map_err(Error::IO).map(|content| {
         content.hash(&mut hasher);
