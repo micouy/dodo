@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, Unreachable},
     target::{Target, TaskContext},
 };
 
@@ -78,11 +78,7 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
             .file_name()
             .ok_or(Error::InvalidFilePath)?
             .to_str()
-            .ok_or_else(|| {
-                Error::Unreachable(
-                    "Conversion of OsStr to &str failed".to_string(),
-                )
-            })?; // TOML uses UTF-8 so the conversion won't fail
+            .ok_or_else(|| Error::Unreachable(Unreachable::OsStrConversion))?; // TOML uses UTF-8 so the conversion won't fail
         let target_filename = Fixed(14).paint(target_filename).to_string();
         let context = TaskContext { target_filename };
 
@@ -124,9 +120,7 @@ pub fn run_targets(targets: &[Target]) -> Result<()> {
             .file_name()
             .ok_or(Error::InvalidFilePath)?
             .to_str()
-            .ok_or_else(|| Error::Unreachable(
-                "Conversion of OsStr to &str failed".to_string(), // TOML uses UTF-8 so the conversion won't fail
-            ))?
+            .ok_or_else(|| Error::Unreachable(Unreachable::OsStrConversion))?
             .to_string();
         let context = TaskContext { target_filename };
 

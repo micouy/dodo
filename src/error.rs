@@ -9,7 +9,7 @@ pub enum Error {
     TOML(toml::de::Error),
     IO(io::Error),
     Formatting(FmtError),
-    Unreachable(String),
+    Unreachable(Unreachable),
     ConfigNotFound,
     InvalidFilePath,
     EmptyCommand,
@@ -20,7 +20,15 @@ pub enum Error {
 // --- UNREACHABLE ERROR ---
 
 #[derive(Debug)]
-pub enum Unreachable {}
+pub enum Unreachable {
+    FmtBadFormat,
+    FmtBadArg,
+    FmtBadData,
+    FmtParse,
+    FmtMapRequired,
+    FmtMissingArg,
+    OsStrConversion,
+}
 
 // --- FORMATTING ERROR ---
 
@@ -33,30 +41,19 @@ pub enum FmtError {
 impl From<dynfmt::Error<'_>> for Error {
     fn from(err: dynfmt::Error) -> Self {
         use dynfmt::{Error::*, Position::*};
-        use Error::*;
         use FmtError::*;
 
         match err {
-            BadFormat(..) => Unreachable(
-                "`BadFormat` thrown by curly formatter.".to_string(),
-            ),
-            BadData(..) =>
-                Unreachable("`BadData` thrown by curly formatter.".to_string()),
-            BadArg(..) =>
-                Unreachable("`BadArg` thrown by curly formatter.".to_string()),
-            Parse(..) =>
-                Unreachable("`Parse` thrown by curly formatter.".to_string()),
-            MapRequired => Unreachable(
-                "`MapRequired` thrown while parsing from named access."
-                    .to_string(),
-            ),
-            ListRequired => Formatting(EmptyBrackets),
-            MissingArg(Key(s)) => Formatting(InvalidVar(s.to_string())),
-            MissingArg(..) => Unreachable(
-                "Missing indexed arg while parsing from named access."
-                    .to_string(),
-            ),
-            Io(err) => IO(err),
+            ListRequired => Error::Formatting(EmptyBrackets),
+            MissingArg(Key(s)) => Error::Formatting(InvalidVar(s.to_string())),
+            Io(err) => Error::IO(err),
+
+            BadFormat(..) => Error::Unreachable(Unreachable::FmtBadFormat),
+            BadData(..) => Error::Unreachable(Unreachable::FmtBadData),
+            BadArg(..) => Error::Unreachable(Unreachable::FmtBadArg),
+            Parse(..) => Error::Unreachable(Unreachable::FmtParse),
+            MapRequired => Error::Unreachable(Unreachable::FmtMapRequired),
+            MissingArg(..) => Error::Unreachable(Unreachable::FmtMissingArg),
         }
     }
 }
