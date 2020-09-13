@@ -22,7 +22,7 @@ pub struct Config {
 // to add validation
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Target {
-    pub output: PathBuf, // handle multiple outputs?
+    pub target: PathBuf, // handle multiple outputs?
     pub tasks: Vec<Task>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<PathBuf>,
@@ -97,7 +97,7 @@ impl Task {
             .args(&args)
             .spawn()
             .map(|mut child| child.wait())
-            .and_then(identity) // smart flatten ;))))
+            .flatten()
             .map_err(Error::IO)
     }
 }

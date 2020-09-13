@@ -14,7 +14,7 @@ pub enum Error {
     InvalidFilePath,
     EmptyCommand,
     DependencyCycle,
-    DuplicateOutput,
+    DuplicateTarget,
 }
 
 // --- UNREACHABLE ERROR ---

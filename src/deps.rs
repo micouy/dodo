@@ -8,7 +8,7 @@ use crate::{
 use daggy::{Dag as Graph, NodeIndex};
 
 enum DepOrigin {
-    Output(NodeIndex),
+    Target(NodeIndex),
     LeafFile,
 }
 
@@ -29,6 +29,7 @@ impl DependencyGraph {
             });
         });
 
+        // replace `LeafFile` with `Target` where it's possible
         targets
             .into_iter()
             .map(|target| -> Result<_> {
@@ -37,10 +38,10 @@ impl DependencyGraph {
                 // make each output name point to the
                 // corresponding target
                 match dep_to_origin_map
-                    .insert(graph[id].output.clone(), DepOrigin::Output(id))
+                    .insert(graph[id].target.clone(), DepOrigin::Target(id))
                 {
-                    Some(DepOrigin::Output(_colliding_id)) =>
-                        Err(Error::DuplicateOutput),
+                    Some(DepOrigin::Target(_colliding_id)) =>
+                        Err(Error::DuplicateTarget),
                     _ => Ok(()),
                 }
             })
@@ -60,7 +61,7 @@ impl DependencyGraph {
                             dep_to_origin_map.get(dep).expect("no dependency");
 
                         match origin {
-                            DepOrigin::Output(ix) => Some(*ix),
+                            DepOrigin::Target(ix) => Some(*ix),
                             DepOrigin::LeafFile => None,
                         }
                     })

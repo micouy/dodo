@@ -1,3 +1,5 @@
+#![feature(result_flattening)]
+
 mod deps;
 mod error;
 mod target;

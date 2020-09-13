@@ -56,7 +56,7 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
         println!(
             "{}: {}",
             Green.paint("OUTPUT"),
-            target.output.to_string_lossy()
+            target.target.to_string_lossy()
         );
 
         println!(
@@ -68,13 +68,13 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
                 .to_string_lossy()
         );
 
-        let hash = get_file_hash(&target.output)
+        let hash = get_file_hash(&target.target)
             .map(|h| format!("{:x}", h))
             .unwrap_or_else(|_| "file not present".into());
         println!("{}: {}", Green.paint("HASH"), hash);
 
         let target_filename = target
-            .output
+            .target
             .file_name()
             .ok_or(Error::InvalidFilePath)?
             .to_str()
@@ -116,7 +116,7 @@ pub fn run_targets(targets: &[Target]) -> Result<()> {
         let working_dir = target.working_dir.clone().unwrap_or(current_dir);
 
         let target_filename = target
-            .output
+            .target
             .file_name()
             .ok_or(Error::InvalidFilePath)?
             .to_str()
