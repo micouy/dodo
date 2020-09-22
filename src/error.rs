@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, path::PathBuf};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -6,28 +6,36 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+    UserError(UserError),
     TOML(toml::de::Error),
     IO(io::Error),
     Formatting(FmtError),
-    Unreachable(Unreachable),
-    ConfigNotFound,
-    InvalidFilePath,
-    EmptyCommand,
-    DependencyCycle,
-    DuplicateTarget,
+    Internal { line: u32, file: &'static str },
+    Other,
 }
 
-// --- UNREACHABLE ERROR ---
+impl Error {
+    pub fn internal(line: u32, file: &'static str) -> Self {
+        Error::Internal { line, file }
+    }
+}
+
+// --- USER ERROR ---
 
 #[derive(Debug)]
-pub enum Unreachable {
-    FmtBadFormat,
-    FmtBadArg,
-    FmtBadData,
-    FmtParse,
-    FmtMapRequired,
-    FmtMissingArg,
-    OsStrConversion,
+pub enum UserError {
+    EmptyCommand,
+    EmptyTargetIdentifier,
+    DependencyCycle,
+    DuplicateTarget,
+    ConfigNotFound,
+    NoSuchTarget(PathBuf),
+}
+
+impl From<UserError> for Error {
+    fn from(inner: UserError) -> Self {
+        Error::UserError(inner)
+    }
 }
 
 // --- FORMATTING ERROR ---
@@ -42,18 +50,14 @@ impl From<dynfmt::Error<'_>> for Error {
     fn from(err: dynfmt::Error) -> Self {
         use dynfmt::{Error::*, Position::*};
         use FmtError::*;
+        // TODO check which errors can't occur (`Internal`)
+        // and which can only be caused by the user (`UserError`)
 
         match err {
             ListRequired => Error::Formatting(EmptyBrackets),
             MissingArg(Key(s)) => Error::Formatting(InvalidVar(s.to_string())),
             Io(err) => Error::IO(err),
-
-            BadFormat(..) => Error::Unreachable(Unreachable::FmtBadFormat),
-            BadData(..) => Error::Unreachable(Unreachable::FmtBadData),
-            BadArg(..) => Error::Unreachable(Unreachable::FmtBadArg),
-            Parse(..) => Error::Unreachable(Unreachable::FmtParse),
-            MapRequired => Error::Unreachable(Unreachable::FmtMapRequired),
-            MissingArg(..) => Error::Unreachable(Unreachable::FmtMissingArg),
+            _ => Error::Other,
         }
     }
 }

@@ -1,11 +1,11 @@
 use std::{
-    convert::{identity, AsRef},
+    convert::AsRef,
     path::{Path, PathBuf},
     process::{Command, ExitStatus},
 };
 
 use crate::{
-    error::{Error, Result},
+    error::{Error, Result, UserError},
     util::format_arg,
 };
 
@@ -22,7 +22,8 @@ pub struct Config {
 // to add validation
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct Target {
-    pub target: PathBuf, // handle multiple outputs?
+    #[serde(rename = "target")]
+    pub identifier: PathBuf, // handle multiple outputs?
     pub tasks: Vec<Task>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_dir: Option<PathBuf>,
@@ -36,11 +37,11 @@ impl Target {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Eq, PartialEq)]
 pub struct Task {
     pub command: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    working_dir: Option<PathBuf>,
+    pub working_dir: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -70,7 +71,7 @@ impl Task {
         context: impl FormatArgs,
     ) -> Result<(String, Vec<String>)> {
         let mut parts = self.command.split(' ').filter(|s| !s.is_empty());
-        let command = parts.next().ok_or(Error::EmptyCommand)?.to_string();
+        let command = parts.nth(0).ok_or(UserError::EmptyCommand)?.to_string();
         let args = parts
             .map(|arg| format_arg(arg, &context).map_err(Error::from))
             .collect::<Result<_>>()?;

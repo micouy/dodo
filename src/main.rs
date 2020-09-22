@@ -1,21 +1,25 @@
 #![feature(result_flattening)]
+#![allow(clippy::iter_nth_zero)]
 
 mod deps;
 mod error;
 mod target;
 mod util;
 
+use deps::DependencyGraph;
 use error::{Error, Result};
 use target::Config;
-use util::{print_targets, read_config, run_targets};
 
 fn main() -> Result<()> {
-    let args = std::env::args().nth(1);
-    let dodo = read_config(args)?;
-    let dodo = toml::from_str::<Config>(&dodo).map_err(Error::TOML)?;
+    let target = std::env::args().nth(1).expect("specify target");
 
-    print_targets(&dodo.targets)?;
-    run_targets(&dodo.targets)?;
+    let dodo = util::read_config("dodo.toml")?;
+    let dodo = toml::from_str::<Config>(&dodo).map_err(Error::TOML)?;
+    let deps = DependencyGraph::construct(dodo.targets.clone())?;
+    let target_sequence = deps.get_target_sequence(target.into())?;
+
+    util::print_targets(&dodo.targets)?;
+    util::run_targets(target_sequence)?;
 
     Ok(())
 }

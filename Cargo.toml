@@ -13,3 +13,6 @@ dynfmt = { version = "0.1", features = ["curly"] }
 twox-hash = "1.5"
 ansi_term = "0.12"
 daggy = "0.7"
+
+[dev-dependencies]
+pretty_assertions = "0.6"

@@ -3,12 +3,14 @@ use std::{
     env,
     fs,
     hash::{Hash, Hasher as _},
+    iter::once,
     path::Path,
+    result::Result as StdResult,
     string::ToString,
 };
 
 use crate::{
-    error::{Error, Result, Unreachable},
+    error::{Error, Result, UserError},
     target::{Target, TaskContext},
 };
 
@@ -19,7 +21,7 @@ use twox_hash::XxHash64 as Hasher;
 pub fn format_arg(arg: &str, context: impl FormatArgs) -> Result<String> {
     Formatter
         .format(arg, context)
-        .map_err(Into::into)
+        .map_err(|_| Error::internal(line!(), file!()))
         .map(|cow| cow.to_string())
 }
 
@@ -33,19 +35,15 @@ pub fn get_file_hash(path: impl AsRef<Path>) -> Result<u64> {
     })
 }
 
-pub fn read_config<P>(file: Option<P>) -> Result<String>
+pub fn read_config<P>(file: P) -> Result<String>
 where
     P: AsRef<Path>,
 {
-    let file = file
-        .as_ref()
-        .map(|f| f.as_ref())
-        .unwrap_or_else(|| "dodo.toml".as_ref());
     fs::read_to_string(file).map_err(|e| {
         use std::io::ErrorKind::*;
 
         match e.kind() {
-            NotFound => Error::ConfigNotFound,
+            NotFound => UserError::ConfigNotFound.into(),
             _ => Error::IO(e),
         }
     })
@@ -56,7 +54,7 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
         println!(
             "{}: {}",
             Green.paint("OUTPUT"),
-            target.target.to_string_lossy()
+            target.identifier.to_string_lossy()
         );
 
         println!(
@@ -68,17 +66,17 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
                 .to_string_lossy()
         );
 
-        let hash = get_file_hash(&target.target)
+        let hash = get_file_hash(&target.identifier)
             .map(|h| format!("{:x}", h))
             .unwrap_or_else(|_| "file not present".into());
         println!("{}: {}", Green.paint("HASH"), hash);
 
         let target_filename = target
-            .target
+            .identifier
             .file_name()
-            .ok_or(Error::InvalidFilePath)?
+            .ok_or(UserError::EmptyTargetIdentifier)?
             .to_str()
-            .ok_or_else(|| Error::Unreachable(Unreachable::OsStrConversion))?; // TOML uses UTF-8 so the conversion won't fail
+            .ok_or_else(|| Error::internal(line!(), file!()))?; // TOML uses UTF-8 so the conversion won't fail
         let target_filename = Fixed(14).paint(target_filename).to_string();
         let context = TaskContext { target_filename };
 
@@ -110,26 +108,111 @@ pub fn print_targets(targets: &[Target]) -> Result<()> {
     Ok(())
 }
 
-pub fn run_targets(targets: &[Target]) -> Result<()> {
-    for target in targets {
-        let current_dir = env::current_dir().map_err(Error::IO)?;
-        let working_dir = target.working_dir.clone().unwrap_or(current_dir);
+pub fn run_targets(targets: Vec<Target>) -> Result<()> {
+    let targets_with_contexts = targets
+        .into_iter()
+        .map(|target| {
+            let current_dir = env::current_dir().map_err(Error::IO)?;
+            let working_dir = target.working_dir.clone().unwrap_or(current_dir);
 
-        let target_filename = target
-            .target
-            .file_name()
-            .ok_or(Error::InvalidFilePath)?
-            .to_str()
-            .ok_or_else(|| Error::Unreachable(Unreachable::OsStrConversion))?
-            .to_string();
-        let context = TaskContext { target_filename };
+            let target_filename = target
+                .identifier
+                .file_name()
+                .ok_or(UserError::EmptyTargetIdentifier)?
+                .to_str()
+                .ok_or_else(|| Error::internal(line!(), file!()))?
+                .to_string();
+            let context = TaskContext { target_filename };
 
-        target
-            .tasks
-            .iter()
-            .map(|task| task.run(working_dir.clone(), &context).map(|_| ()))
-            .collect::<Result<()>>()?;
-    }
+            Ok((target, context, working_dir))
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    targets_with_contexts
+        .clone()
+        .into_iter()
+        .map(|(target, context, _)| {
+            target
+                .tasks
+                .into_iter()
+                .map(move |task| task.format_command(&context))
+        })
+        .flatten()
+        .map_item(|(command, args)| {
+            let text = once(command).chain(args).collect::<Vec<_>>().join(" ");
+            println!("{}", text);
+        })
+        .collect::<Result<()>>()?;
+
+    targets_with_contexts
+        .into_iter()
+        .map(|(target, context, working_dir)| {
+            target
+                .tasks
+                .into_iter()
+                .map(move |task| task.run(working_dir.clone(), &context))
+                .map_item(|_| ())
+        })
+        .flatten()
+        .collect::<Result<_>>()?;
 
     Ok(())
+}
+
+pub struct MapOk<I, O> {
+    inner: I,
+    op: O,
+}
+
+impl<I, T, E, O, U> Iterator for MapOk<I, O>
+where
+    I: Iterator<Item = StdResult<T, E>>,
+    O: FnMut(T) -> U,
+{
+    type Item = StdResult<U, E>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|result| result.map(&mut self.op))
+    }
+}
+
+pub struct MapErr<I, O> {
+    inner: I,
+    op: O,
+}
+
+impl<I, T, E, O, F> Iterator for MapErr<I, O>
+where
+    I: Iterator<Item = StdResult<T, E>>,
+    O: FnMut(E) -> F,
+{
+    type Item = StdResult<T, F>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next().map(|result| result.map_err(&mut self.op))
+    }
+}
+
+// TODO rename the methods
+pub trait ResultIterator<T, E>:
+    Iterator<Item = StdResult<T, E>> + Sized
+{
+    fn map_item<O, U>(self, op: O) -> MapOk<Self, O>
+    where
+        O: FnMut(T) -> U,
+    {
+        MapOk { inner: self, op }
+    }
+
+    fn map_item_err<O, F>(self, op: O) -> MapErr<Self, O>
+    where
+        O: FnMut(E) -> F,
+    {
+        MapErr { inner: self, op }
+    }
+}
+
+impl<I, T, E> ResultIterator<T, E> for I where
+    I: Iterator<Item = StdResult<T, E>>
+{
 }
